@@ -1,0 +1,4 @@
+entity-packages: domain
+transactional-packages: none
+querybean-packages: none
+

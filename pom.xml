@@ -46,4 +46,22 @@
 
   </dependencies>
 
+  <build>
+    <plugins>
+
+      <plugin>
+        <groupId>io.repaint.maven</groupId>
+        <artifactId>tiles-maven-plugin</artifactId>
+        <version>2.12</version>
+        <extensions>true</extensions>
+        <configuration>
+          <tiles>
+            <tile>io.ebean.tile:enhancement:7.2</tile>
+          </tiles>
+        </configuration>
+      </plugin>
+
+    </plugins>
+  </build>
+
 </project>
