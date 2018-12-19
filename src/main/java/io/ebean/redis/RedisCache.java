@@ -2,8 +2,10 @@ package io.ebean.redis;
 
 import io.ebean.cache.ServerCache;
 import io.ebean.cache.ServerCacheStatistics;
+import io.ebean.meta.MetricType;
+import io.ebean.metric.MetricFactory;
+import io.ebean.metric.TimedMetric;
 import io.ebean.redis.encode.Encode;
-import io.ebeaninternal.metric.MetricFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.ScanParams;
@@ -22,18 +24,34 @@ class RedisCache implements ServerCache {
   private static final String CURSOR_0 = "0";
   private static final byte[] CURSOR_0_BYTES = SafeEncoder.encode(CURSOR_0);
 
-//  MetricFactory.get();
-
   private final JedisPool jedisPool;
   private final String cacheKey;
   private final Encode keyEncode;
   private final Encode valueEncode;
+
+  private final TimedMetric metricGet;
+  private final TimedMetric metricGetAll;
+  private final TimedMetric metricPut;
+  private final TimedMetric metricPutAll;
+  private final TimedMetric metricRemove;
+  private final TimedMetric metricRemoveAll;
+  private final TimedMetric metricClear;
 
   RedisCache(JedisPool jedisPool, String cacheKey, Encode keyEncode, Encode valueEncode) {
     this.jedisPool = jedisPool;
     this.cacheKey = cacheKey;
     this.keyEncode = keyEncode;
     this.valueEncode = valueEncode;
+
+    String prefix = "ebean.l2cache." + cacheKey;
+
+    metricGet = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".get");
+    metricGetAll = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".getAll");
+    metricPut = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".put");
+    metricPutAll = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".putAll");
+    metricRemove = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".remove");
+    metricRemoveAll = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".removeAll");
+    metricClear = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".clear");
   }
 
   private byte[] key(Object id) {
@@ -57,6 +75,7 @@ class RedisCache implements ServerCache {
   @Override
   public Map<Object, Object> getAll(Set<Object> keys) {
 
+    long start = System.nanoTime();
     Map<Object, Object> map = new LinkedHashMap<>();
 
     List<Object> keyList = new ArrayList<>(keys);
@@ -65,6 +84,7 @@ class RedisCache implements ServerCache {
       for (int i = 0; i < keyList.size(); i++) {
         map.put(keyList.get(i), valueDecode(valsAsBytes.get(i)));
       }
+      metricGetAll.add((System.nanoTime() - start) / 1000L, keyList.size());
       return map;
     }
   }
@@ -72,21 +92,27 @@ class RedisCache implements ServerCache {
 
   @Override
   public Object get(Object id) {
+    long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
-      return valueDecode(resource.get(key(id)));
+      Object val = valueDecode(resource.get(key(id)));
+      metricGet.add((System.nanoTime() - start) / 1000L);
+      return val;
     }
   }
 
 
   @Override
   public void put(Object id, Object value) {
+    long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       resource.set(key(id), value(value));
+      metricPut.add((System.nanoTime() - start) / 1000L);
     }
   }
 
   @Override
   public void putAll(Map<Object, Object> keyValues) {
+    long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       byte[][] raw = new byte[keyValues.size() * 2][];
       int pos = 0;
@@ -95,20 +121,25 @@ class RedisCache implements ServerCache {
         raw[pos++] = value(entry.getValue());
       }
       resource.mset(raw);
+      metricPutAll.add((System.nanoTime() - start) / 1000L, keyValues.size());
     }
   }
 
   @Override
   public void remove(Object id) {
+    long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       resource.del(key(id));
+      metricRemove.add((System.nanoTime() - start) / 1000L);
     }
   }
 
   @Override
   public void removeAll(Set<Object> keys) {
+    long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       resource.del(keysAsBytes(keys));
+      metricRemoveAll.add((System.nanoTime() - start) / 1000L, keys.size());
     }
   }
 
@@ -123,7 +154,7 @@ class RedisCache implements ServerCache {
 
   @Override
   public void clear() {
-
+    long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
 
       ScanParams params = new ScanParams();
@@ -144,8 +175,9 @@ class RedisCache implements ServerCache {
 
         next = SafeEncoder.encode(nextCursor);
       } while (!next.equals("0"));
-    }
 
+      metricClear.add((System.nanoTime() - start) / 1000L);
+    }
   }
 
   @Override

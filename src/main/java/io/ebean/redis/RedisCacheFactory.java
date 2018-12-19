@@ -57,11 +57,11 @@ class RedisCacheFactory implements ServerCacheFactory {
   }
 
   private JedisPool getJedisPool(ServerConfig serverConfig) {
-    JedisPool jedisPool = (JedisPool) serverConfig.getServiceObject("jedisPool");
+    JedisPool jedisPool = serverConfig.getServiceObject(JedisPool.class);
     if (jedisPool != null) {
       return jedisPool;
     }
-    RedisConfig redisConfig = (RedisConfig) serverConfig.getServiceObject("redisConfig");
+    RedisConfig redisConfig = serverConfig.getServiceObject(RedisConfig.class);
     if (redisConfig == null) {
       redisConfig = new RedisConfig();
     }
@@ -79,7 +79,8 @@ class RedisCacheFactory implements ServerCacheFactory {
 
   private ServerCache createNormalCache(ServerCacheConfig config) {
 
-//    config.getCacheOptions().isNearCache();
+    boolean nearCache = config.getCacheOptions().isNearCache();
+
     String cacheKey = config.getCacheKey();
     EncodePrefixKey encodeKey = new EncodePrefixKey(cacheKey);
     switch (config.getType()) {
