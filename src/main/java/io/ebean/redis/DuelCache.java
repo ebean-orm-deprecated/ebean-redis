@@ -6,6 +6,7 @@ import io.ebean.cache.ServerCacheStatistics;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.LongAdder;
 
 public class DuelCache implements ServerCache, NearCacheInvalidate {
 
@@ -13,6 +14,11 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
   private final ServerCache remote;
   private final NearCacheNotify cacheNotify;
   private final String cacheKey;
+
+  private final LongAdder nearMissCount = new LongAdder();
+  private final LongAdder nearHitCount = new LongAdder();
+  private final LongAdder remoteMissCount = new LongAdder();
+  private final LongAdder remoteHitCount = new LongAdder();
 
   public DuelCache(ServerCache near, ServerCache remote, String cacheKey, NearCacheNotify cacheNotify) {
     this.near = near;
@@ -41,6 +47,9 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
 
     Map<Object, Object> resultMap = near.getAll(keys);
 
+    nearHitCount.add(resultMap.size());
+    nearMissCount.add(keys.size() - resultMap.size());
+
     Set<Object> localKeys = resultMap.keySet();
 
     Set<Object> remainingKeys = new HashSet<>();
@@ -52,6 +61,10 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
     if (!remainingKeys.isEmpty()) {
       // fetch missing ones from remote cache and merge results
       Map<Object, Object> remoteMap = remote.getAll(remainingKeys);
+
+      remoteHitCount.add(remoteMap.size());
+      remoteMissCount.add(remainingKeys.size() - remoteMap.size());
+
       if (!remoteMap.isEmpty()) {
         near.putAll(remoteMap);
         resultMap.putAll(remoteMap);
@@ -65,10 +78,15 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
   public Object get(Object id) {
     Object val = near.get(id);
     if (val != null) {
+      nearHitCount.increment();
       return val;
     }
+    nearMissCount.increment();
     Object remoteVal = remote.get(id);
-    if (remoteVal != null) {
+    if (remoteVal == null) {
+      remoteMissCount.increment();
+    } else {
+      remoteHitCount.increment();
       near.put(id, remoteVal);
     }
     return remoteVal;
@@ -83,7 +101,6 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
 
   @Override
   public void put(Object id, Object value) {
-
     near.put(id, value);
     remote.put(id, value);
     cacheNotify.invalidateKey(cacheKey, id);
@@ -126,4 +143,19 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
     return null;
   }
 
+  public long getNearMissCount() {
+    return nearMissCount.longValue();
+  }
+
+  public long getNearHitCount() {
+    return nearHitCount.longValue();
+  }
+
+  public long getRemoteMissCount() {
+    return remoteMissCount.longValue();
+  }
+
+  public long getRemoteHitCount() {
+    return remoteHitCount.longValue();
+  }
 }

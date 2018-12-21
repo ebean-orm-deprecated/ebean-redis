@@ -40,9 +40,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 class RedisCacheFactory implements ServerCacheFactory {
 
-  private static final Logger queryLogger = LoggerFactory.getLogger("org.avaje.ebean.cache.QUERY");
+  private static final Logger queryLogger = LoggerFactory.getLogger("io.ebean.cache.QUERY");
 
-  private static final Logger logger = LoggerFactory.getLogger("org.avaje.ebean.cache.CACHE");
+  private static final Logger logger = LoggerFactory.getLogger("io.ebean.cache.CACHE");
 
   private static final Logger tableModLogger = LoggerFactory.getLogger("io.ebean.cache.TABLEMODS");
 
@@ -81,6 +81,8 @@ class RedisCacheFactory implements ServerCacheFactory {
 
   private final TimedMetric metricMsgOut;
   private final TimedMetric metricMsgIn;
+
+  private final String serverId = ModId.id();
 
   private ServerCacheNotify listener;
 
@@ -276,6 +278,7 @@ class RedisCacheFactory implements ServerCacheFactory {
       try (Jedis resource = jedisPool.getResource()) {
         ByteArrayOutputStream ba = new ByteArrayOutputStream(100);
         ObjectOutputStream os = new ObjectOutputStream(ba);
+        os.writeUTF(serverId);
         os.writeInt(MSG_NEARCACHE_KEYS);
         os.writeUTF(cacheKey);
         os.writeInt(keySet.size());
@@ -301,6 +304,7 @@ class RedisCacheFactory implements ServerCacheFactory {
       try (Jedis resource = jedisPool.getResource()) {
         ByteArrayOutputStream ba = new ByteArrayOutputStream(100);
         ObjectOutputStream os = new ObjectOutputStream(ba);
+        os.writeUTF(serverId);
         os.writeInt(MSG_NEARCACHE_KEY);
         os.writeUTF(cacheKey);
         os.writeObject(id);
@@ -323,6 +327,7 @@ class RedisCacheFactory implements ServerCacheFactory {
       try (Jedis resource = jedisPool.getResource()) {
         ByteArrayOutputStream ba = new ByteArrayOutputStream(100);
         ObjectOutputStream os = new ObjectOutputStream(ba);
+        os.writeUTF(serverId);
         os.writeInt(MSG_NEARCACHE_CLEAR);
         os.writeUTF(cacheKey);
         os.flush();
@@ -378,10 +383,15 @@ class RedisCacheFactory implements ServerCacheFactory {
         String cacheKey = null;
         try {
           ObjectInputStream oi = new ObjectInputStream(new ByteArrayInputStream(message));
+          String sourceServerId = oi.readUTF();
           int msgType = oi.readInt();
           cacheKey = oi.readUTF();
+          if (sourceServerId.equals(serverId)) {
+            // ignore this message as we are the server that sent it
+            return;
+          }
           if (logger.isDebugEnabled()) {
-            logger.debug("processNearCacheMessage type:{} cacheKey:{}", msgType, cacheKey);
+            logger.debug("processNearCacheMessage serverId:{} type:{} cacheKey:{}", sourceServerId, msgType, cacheKey);
           }
 
           switch (msgType) {
