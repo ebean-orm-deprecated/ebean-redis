@@ -1,34 +1,28 @@
 package io.ebean.redis.encode;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import io.ebean.cache.TenantAwareKey;
+
+import java.nio.charset.StandardCharsets;
 
 public class EncodePrefixKey implements Encode {
 
   private final String prefix;
 
-  public EncodePrefixKey(String prefix) {
-    this.prefix = prefix;
+  public EncodePrefixKey(String cacheKey) {
+    this.prefix = cacheKey + ":";
   }
 
   @Override
   public byte[] encode(Object value) {
-
     try {
-      PrefixKey wrapped = new PrefixKey(prefix, value);
-      ByteArrayOutputStream os = new ByteArrayOutputStream();
-      ObjectOutputStream oos = new ObjectOutputStream(os);
-      oos.writeObject(wrapped);
+      if (!(value instanceof String) && !(value instanceof TenantAwareKey.CacheKey)) {
+        throw new IllegalStateException("Expecting String keys but got type:" + value.getClass());
+      }
 
-      oos.flush();
-      oos.close();
+      String key = prefix + value.toString();
+      return key.getBytes(StandardCharsets.UTF_8);
 
-      return os.toByteArray();
-
-    } catch (IOException e) {
+    } catch (Exception e) {
       throw new RuntimeException("Failed to decode cache data", e);
     }
   }
@@ -36,12 +30,11 @@ public class EncodePrefixKey implements Encode {
   @Override
   public Object decode(byte[] data) {
     try {
-      ByteArrayInputStream is = new ByteArrayInputStream(data);
-      ObjectInputStream ois = new ObjectInputStream(is);
-      PrefixKey wrapped = (PrefixKey)ois.readObject();
-      return wrapped.getKey();
+      String key = new String(data, StandardCharsets.UTF_8);
+      int pos = key.indexOf(':');
+      return key.substring(pos);
 
-    } catch (ClassNotFoundException | IOException e) {
+    } catch (Exception e) {
       throw new RuntimeException("Failed to decode cache data", e);
     }
   }

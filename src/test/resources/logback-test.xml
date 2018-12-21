@@ -14,10 +14,7 @@
 
   <!--<logger name="com.avaje.ebeaninternal.server.cluster" level="TRACE"/>-->
 
-  <logger name="org.apache.ignite" level="INFO" />
-  <logger name="main.Server" level="TRACE"/>
-
-  <logger name="io.ebean.Cluster" level="TRACE"/>
+  <logger name="io.ebean" level="DEBUG"/>
 
   <logger name="io.ebean.SQL" level="TRACE"/>
   <logger name="io.ebean.TXN" level="TRACE"/>

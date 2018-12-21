@@ -6,7 +6,7 @@ import io.ebean.annotation.Cache;
 import javax.persistence.Entity;
 import java.time.LocalDate;
 
-@Cache(enableQueryCache = true)
+@Cache(enableQueryCache = true, nearCache = true)
 @Entity
 public class EFoo extends EBase {
 

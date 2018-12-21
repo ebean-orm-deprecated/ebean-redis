@@ -43,15 +43,17 @@ class RedisCache implements ServerCache {
     this.keyEncode = keyEncode;
     this.valueEncode = valueEncode;
 
-    String prefix = "ebean.l2cache." + cacheKey;
+    String prefix = "ebean.l2cache.";
 
-    metricGet = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".get");
-    metricGetAll = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".getAll");
-    metricPut = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".put");
-    metricPutAll = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".putAll");
-    metricRemove = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".remove");
-    metricRemoveAll = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".removeAll");
-    metricClear = MetricFactory.get().createTimedMetric(MetricType.L2, prefix + ".clear");
+    MetricFactory metricFactory = MetricFactory.get();
+
+    metricGet = metricFactory.createTimedMetric(MetricType.L2, prefix + "get." + cacheKey);
+    metricGetAll = metricFactory.createTimedMetric(MetricType.L2, prefix + "getMany." + cacheKey);
+    metricPut = metricFactory.createTimedMetric(MetricType.L2, prefix + "put." + cacheKey);
+    metricPutAll = metricFactory.createTimedMetric(MetricType.L2, prefix + "putMany." + cacheKey);
+    metricRemove = metricFactory.createTimedMetric(MetricType.L2, prefix + "remove." + cacheKey);
+    metricRemoveAll = metricFactory.createTimedMetric(MetricType.L2, prefix + "removeMany." + cacheKey);
+    metricClear = metricFactory.createTimedMetric(MetricType.L2, prefix + "clear." + cacheKey);
   }
 
   private byte[] key(Object id) {
@@ -84,18 +86,17 @@ class RedisCache implements ServerCache {
       for (int i = 0; i < keyList.size(); i++) {
         map.put(keyList.get(i), valueDecode(valsAsBytes.get(i)));
       }
-      metricGetAll.add((System.nanoTime() - start) / 1000L, keyList.size());
+      metricGetAll.addSinceNanos(start, keyList.size());
       return map;
     }
   }
-
 
   @Override
   public Object get(Object id) {
     long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       Object val = valueDecode(resource.get(key(id)));
-      metricGet.add((System.nanoTime() - start) / 1000L);
+      metricGet.addSinceNanos(start);
       return val;
     }
   }
@@ -106,7 +107,7 @@ class RedisCache implements ServerCache {
     long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       resource.set(key(id), value(value));
-      metricPut.add((System.nanoTime() - start) / 1000L);
+      metricPut.addSinceNanos(start);
     }
   }
 
@@ -121,7 +122,7 @@ class RedisCache implements ServerCache {
         raw[pos++] = value(entry.getValue());
       }
       resource.mset(raw);
-      metricPutAll.add((System.nanoTime() - start) / 1000L, keyValues.size());
+      metricPutAll.addSinceNanos(start, keyValues.size());
     }
   }
 
@@ -130,7 +131,7 @@ class RedisCache implements ServerCache {
     long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       resource.del(key(id));
-      metricRemove.add((System.nanoTime() - start) / 1000L);
+      metricRemove.addSinceNanos(start);
     }
   }
 
@@ -139,7 +140,7 @@ class RedisCache implements ServerCache {
     long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       resource.del(keysAsBytes(keys));
-      metricRemoveAll.add((System.nanoTime() - start) / 1000L, keys.size());
+      metricRemoveAll.addSinceNanos(start, keys.size());
     }
   }
 
@@ -167,16 +168,18 @@ class RedisCache implements ServerCache {
         List<byte[]> keys = scanResult.getResult();
         nextCursor = scanResult.getCursorAsBytes();
 
-        byte[][] raw = new byte[keys.size()][];
-        for (int i = 0; i < keys.size(); i++) {
-          raw[i] = keys.get(i);
+        if (!keys.isEmpty()) {
+          byte[][] raw = new byte[keys.size()][];
+          for (int i = 0; i < keys.size(); i++) {
+            raw[i] = keys.get(i);
+          }
+          resource.del(raw);
         }
-        resource.del(raw);
 
         next = SafeEncoder.encode(nextCursor);
       } while (!next.equals("0"));
 
-      metricClear.add((System.nanoTime() - start) / 1000L);
+      metricClear.addSinceNanos(start);
     }
   }
 
