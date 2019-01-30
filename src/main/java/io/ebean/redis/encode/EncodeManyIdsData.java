@@ -14,7 +14,7 @@ public class EncodeManyIdsData implements Encode {
   public byte[] encode(Object value) {
 
     try {
-      CachedManyIds data = (CachedManyIds)value;
+      CachedManyIds data = (CachedManyIds) value;
       ByteArrayOutputStream os = new ByteArrayOutputStream();
       ObjectOutputStream oos = new ObjectOutputStream(os);
 

@@ -1,7 +1,6 @@
 package io.ebean.redis;
 
 import domain.EFoo;
-import io.ebean.Ebean;
 import io.ebean.EbeanServer;
 import io.ebean.EbeanServerFactory;
 import io.ebean.config.ServerConfig;
@@ -26,8 +25,6 @@ public class ClusterTest {
 
   @Test
   public void test() throws InterruptedException {
-
-    EbeanServer server = Ebean.getDefaultServer();
 
     EbeanServer other = createOther();
 
@@ -55,9 +52,6 @@ public class ClusterTest {
 
     other.find(EFoo.class, 2);
     assertCounts(dualCache, 3, 2, 0, 2);
-
-
-    //other.getServerCacheManager().clearAll();
 
 
     foo0.setName("name2");

@@ -14,7 +14,7 @@ public class EncodeBeanData implements Encode {
   public byte[] encode(Object value) {
 
     try {
-      CachedBeanData data = (CachedBeanData)value;
+      CachedBeanData data = (CachedBeanData) value;
       ByteArrayOutputStream os = new ByteArrayOutputStream();
       ObjectOutputStream oos = new ObjectOutputStream(os);
 
