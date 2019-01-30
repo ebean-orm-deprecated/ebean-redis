@@ -273,73 +273,78 @@ class RedisCacheFactory implements ServerCacheFactory {
 
     @Override
     public void invalidateKeys(String cacheKey, Set<Object> keySet) {
-
-      long nanos = System.nanoTime();
-      try (Jedis resource = jedisPool.getResource()) {
-        ByteArrayOutputStream ba = new ByteArrayOutputStream(100);
-        ObjectOutputStream os = new ObjectOutputStream(ba);
-        os.writeUTF(serverId);
-        os.writeInt(MSG_NEARCACHE_KEYS);
-        os.writeUTF(cacheKey);
-        os.writeInt(keySet.size());
-        for (Object key : keySet) {
-          os.writeObject(key);
-        }
-        os.flush();
-        os.close();
-
-        resource.publish(CHANNEL_NEAR_BYTES, ba.toByteArray());
-
+      try {
+        sendMessage(messageInvalidateKeys(cacheKey, keySet));
       } catch (IOException e) {
         logger.error("failed to transmit invalidateKeys() message", e);
-      } finally {
-        metricMsgOut.add((System.nanoTime() - nanos) / 1000);
       }
     }
 
     @Override
     public void invalidateKey(String cacheKey, Object id) {
-
-      long nanos = System.nanoTime();
-      try (Jedis resource = jedisPool.getResource()) {
-        ByteArrayOutputStream ba = new ByteArrayOutputStream(100);
-        ObjectOutputStream os = new ObjectOutputStream(ba);
-        os.writeUTF(serverId);
-        os.writeInt(MSG_NEARCACHE_KEY);
-        os.writeUTF(cacheKey);
-        os.writeObject(id);
-        os.flush();
-        os.close();
-
-        resource.publish(CHANNEL_NEAR_BYTES, ba.toByteArray());
-
+      try {
+        sendMessage(messageInvalidateKey(cacheKey, id));
       } catch (IOException e) {
         logger.error("failed to transmit invalidateKeys() message", e);
-      } finally {
-        metricMsgOut.addSinceNanos(nanos);
       }
     }
 
     @Override
     public void invalidateClear(String cacheKey) {
-
-      long nanos = System.nanoTime();
-      try (Jedis resource = jedisPool.getResource()) {
-        ByteArrayOutputStream ba = new ByteArrayOutputStream(100);
-        ObjectOutputStream os = new ObjectOutputStream(ba);
-        os.writeUTF(serverId);
-        os.writeInt(MSG_NEARCACHE_CLEAR);
-        os.writeUTF(cacheKey);
-        os.flush();
-        os.close();
-
-        resource.publish(CHANNEL_NEAR_BYTES, ba.toByteArray());
-
+      try {
+        sendMessage(messageInvalidateClear(cacheKey));
       } catch (IOException e) {
         logger.error("failed to transmit invalidateKeys() message", e);
+      }
+    }
+
+    private void sendMessage(byte[] message) {
+      long nanos = System.nanoTime();
+      try {
+        try (Jedis resource = jedisPool.getResource()) {
+          resource.publish(CHANNEL_NEAR_BYTES, message);
+        }
       } finally {
         metricMsgOut.addSinceNanos(nanos);
       }
+    }
+
+    private byte[] messageInvalidateKeys(String cacheKey, Set<Object> keySet) throws IOException {
+      ByteArrayOutputStream ba = new ByteArrayOutputStream(100);
+      ObjectOutputStream os = new ObjectOutputStream(ba);
+      os.writeUTF(serverId);
+      os.writeInt(MSG_NEARCACHE_KEYS);
+      os.writeUTF(cacheKey);
+      os.writeInt(keySet.size());
+      for (Object key : keySet) {
+        os.writeObject(key);
+      }
+      os.flush();
+      os.close();
+      return ba.toByteArray();
+    }
+
+    private byte[] messageInvalidateKey(String cacheKey, Object id) throws IOException {
+      ByteArrayOutputStream ba = new ByteArrayOutputStream(100);
+      ObjectOutputStream os = new ObjectOutputStream(ba);
+      os.writeUTF(serverId);
+      os.writeInt(MSG_NEARCACHE_KEY);
+      os.writeUTF(cacheKey);
+      os.writeObject(id);
+      os.flush();
+      os.close();
+      return ba.toByteArray();
+    }
+
+    private byte[] messageInvalidateClear(String cacheKey) throws IOException {
+      ByteArrayOutputStream ba = new ByteArrayOutputStream(100);
+      ObjectOutputStream os = new ObjectOutputStream(ba);
+      os.writeUTF(serverId);
+      os.writeInt(MSG_NEARCACHE_CLEAR);
+      os.writeUTF(cacheKey);
+      os.flush();
+      os.close();
+      return ba.toByteArray();
     }
   }
 

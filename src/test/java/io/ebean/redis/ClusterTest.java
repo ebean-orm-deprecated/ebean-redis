@@ -1,6 +1,7 @@
 package io.ebean.redis;
 
 import domain.EFoo;
+import io.ebean.Ebean;
 import io.ebean.EbeanServer;
 import io.ebean.EbeanServerFactory;
 import io.ebean.config.ServerConfig;
@@ -25,6 +26,9 @@ public class ClusterTest {
 
   @Test
   public void test() throws InterruptedException {
+
+    // ensure the default server exists first
+    Ebean.getDefaultServer();
 
     EbeanServer other = createOther();
 
