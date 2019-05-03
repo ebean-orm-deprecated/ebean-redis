@@ -6,6 +6,7 @@ import io.ebean.DB;
 import io.ebean.Database;
 import io.ebean.DatabaseFactory;
 import io.ebean.config.DatabaseConfig;
+import org.domain.query.QPerson;
 import org.junit.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,6 +31,10 @@ public class ClusterTest {
     // ensure the default server exists first
     DB.getDefault();
     Database other = createOther();
+
+    new QPerson()
+      .name.eq("Someone")
+      .delete();
 
     Person foo = new Person("Someone");
     foo.save();
