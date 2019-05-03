@@ -1,11 +1,17 @@
 package io.ebean.redis;
 
 import io.ebean.cache.ServerCache;
+import io.ebean.cache.ServerCacheConfig;
 import io.ebean.cache.ServerCacheStatistics;
 import io.ebean.meta.MetricType;
+import io.ebean.meta.MetricVisitor;
+import io.ebean.metric.CountMetric;
 import io.ebean.metric.MetricFactory;
 import io.ebean.metric.TimedMetric;
 import io.ebean.redis.encode.Encode;
+import io.ebean.redis.encode.EncodePrefixKey;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.ScanParams;
@@ -19,7 +25,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import static io.ebean.meta.MetricType.L2;
+
 class RedisCache implements ServerCache {
+
+  private static final Logger log = LoggerFactory.getLogger(RedisCache.class);
 
   private static final String CURSOR_0 = "0";
   private static final byte[] CURSOR_0_BYTES = SafeEncoder.encode(CURSOR_0);
@@ -36,24 +46,42 @@ class RedisCache implements ServerCache {
   private final TimedMetric metricRemove;
   private final TimedMetric metricRemoveAll;
   private final TimedMetric metricClear;
+  private final CountMetric hitCount;
+  private final CountMetric missCount;
 
-  RedisCache(JedisPool jedisPool, String cacheKey, Encode keyEncode, Encode valueEncode) {
+  RedisCache(JedisPool jedisPool, ServerCacheConfig config, Encode valueEncode) {
+
     this.jedisPool = jedisPool;
-    this.cacheKey = cacheKey;
-    this.keyEncode = keyEncode;
+    this.cacheKey = config.getCacheKey();
+    this.keyEncode = new EncodePrefixKey(config.getCacheKey());
     this.valueEncode = valueEncode;
 
-    String prefix = "ebean.l2cache.";
+    String pre = "l2r.";
+    String shortName = config.getShortName();
+    MetricFactory factory = MetricFactory.get();
 
-    MetricFactory metricFactory = MetricFactory.get();
+    hitCount = factory.createCountMetric(L2, pre + shortName + ".hit");
+    missCount = factory.createCountMetric(L2, pre + shortName + ".miss");
+    metricGet = factory.createTimedMetric(MetricType.L2, pre + shortName + ".get");
+    metricGetAll = factory.createTimedMetric(MetricType.L2, pre + shortName + ".getMany");
+    metricPut = factory.createTimedMetric(MetricType.L2, pre + shortName + ".put");
+    metricPutAll = factory.createTimedMetric(MetricType.L2, pre + shortName + ".putMany");
+    metricRemove = factory.createTimedMetric(MetricType.L2, pre + shortName + ".remove");
+    metricRemoveAll = factory.createTimedMetric(MetricType.L2, pre + shortName + ".removeMany");
+    metricClear = factory.createTimedMetric(MetricType.L2, pre + shortName + ".clear");
+  }
 
-    metricGet = metricFactory.createTimedMetric(MetricType.L2, prefix + "get." + cacheKey);
-    metricGetAll = metricFactory.createTimedMetric(MetricType.L2, prefix + "getMany." + cacheKey);
-    metricPut = metricFactory.createTimedMetric(MetricType.L2, prefix + "put." + cacheKey);
-    metricPutAll = metricFactory.createTimedMetric(MetricType.L2, prefix + "putMany." + cacheKey);
-    metricRemove = metricFactory.createTimedMetric(MetricType.L2, prefix + "remove." + cacheKey);
-    metricRemoveAll = metricFactory.createTimedMetric(MetricType.L2, prefix + "removeMany." + cacheKey);
-    metricClear = metricFactory.createTimedMetric(MetricType.L2, prefix + "clear." + cacheKey);
+  @Override
+  public void visit(MetricVisitor visitor) {
+    hitCount.visit(visitor);
+    missCount.visit(visitor);
+    metricGet.visit(visitor);
+    metricGetAll.visit(visitor);
+    metricPut.visit(visitor);
+    metricPutAll.visit(visitor);
+    metricRemove.visit(visitor);
+    metricRemoveAll.visit(visitor);
+    metricClear.visit(visitor);
   }
 
   private byte[] key(Object id) {
@@ -68,10 +96,15 @@ class RedisCache implements ServerCache {
   }
 
   private Object valueDecode(byte[] data) {
-    if (data == null) {
+    try {
+      if (data == null) {
+        return null;
+      }
+      return valueEncode.decode(data);
+    } catch (Exception e) {
+      log.error("Error decoding data, treated as cache miss", e);
       return null;
     }
-    return valueEncode.decode(data);
   }
 
   @Override
@@ -84,7 +117,18 @@ class RedisCache implements ServerCache {
     try (Jedis resource = jedisPool.getResource()) {
       List<byte[]> valsAsBytes = resource.mget(keysAsBytes(keyList));
       for (int i = 0; i < keyList.size(); i++) {
-        map.put(keyList.get(i), valueDecode(valsAsBytes.get(i)));
+        Object val = valueDecode(valsAsBytes.get(i));
+        if (val != null) {
+          map.put(keyList.get(i), val);
+        }
+      }
+      int hits = map.size();
+      int miss = keys.size() - hits;
+      if (hits > 0) {
+        hitCount.add(hits);
+      }
+      if (miss > 0) {
+        missCount.add(miss);
       }
       metricGetAll.addSinceNanos(start, keyList.size());
       return map;
@@ -96,6 +140,11 @@ class RedisCache implements ServerCache {
     long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       Object val = valueDecode(resource.get(key(id)));
+      if (val != null) {
+        hitCount.increment();
+      } else {
+        missCount.increment();
+      }
       metricGet.addSinceNanos(start);
       return val;
     }
@@ -183,6 +232,20 @@ class RedisCache implements ServerCache {
     }
   }
 
+  /**
+   * Return the count of get hits.
+   */
+  public long getHitCount() {
+    return hitCount.get(false);
+  }
+
+  /**
+   * Return the count of get misses.
+   */
+  public long getMissCount() {
+    return missCount.get(false);
+  }
+
   @Override
   public int size() {
     return 0;
@@ -195,6 +258,14 @@ class RedisCache implements ServerCache {
 
   @Override
   public ServerCacheStatistics getStatistics(boolean reset) {
-    return null;
+
+    ServerCacheStatistics cacheStats = new ServerCacheStatistics();
+    cacheStats.setCacheName(cacheKey);
+    cacheStats.setHitCount(hitCount.get(reset));
+    cacheStats.setMissCount(missCount.get(reset));
+    cacheStats.setPutCount(metricPut.collect(reset).getCount());
+    cacheStats.setRemoveCount(metricRemove.collect(reset).getCount());
+    cacheStats.setClearCount(metricClear.collect(reset).getCount());
+    return cacheStats;
   }
 }

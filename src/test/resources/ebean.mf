@@ -1,4 +1,4 @@
-entity-packages: domain
-transactional-packages: none
-querybean-packages: none
-
+entity-packages: org.domain
+transactional-packages: org
+querybean-packages: org
+profile-location: true

@@ -1,4 +1,6 @@
 ebean:
+  dumpMetricsOnShutdown: true
+  dumpMetricsOptions: sql,hash,loc
   test:
     redis: latest
 #    shutdown: stop # stop | remove

@@ -1,14 +1,15 @@
-package domain;
+package org.domain;
 
 
 import io.ebean.annotation.Cache;
+import io.ebean.annotation.Index;
 
 import javax.persistence.Entity;
 import java.time.LocalDate;
 
-@Cache(enableQueryCache = true, nearCache = true)
+@Cache(enableQueryCache = true, nearCache = true, naturalKey = "name")
 @Entity
-public class EFoo extends EBase {
+public class Person extends EBase {
 
   public enum Status {
     NEW,
@@ -16,18 +17,16 @@ public class EFoo extends EBase {
     INACTIVE
   }
 
-  LocalDate localDate;
+  @Index(unique = true)
+  String name;
 
   Status status;
 
-  String name;
+  LocalDate localDate;
 
   String notes;
 
-  public EFoo() {
-  }
-
-  public EFoo(String name) {
+  public Person(String name) {
     this.name = name;
     this.status = Status.NEW;
   }

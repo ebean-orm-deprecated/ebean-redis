@@ -1,4 +1,4 @@
-package domain;
+package org.domain;
 
 import io.ebean.Model;
 import io.ebean.annotation.WhenCreated;
@@ -7,52 +7,52 @@ import io.ebean.annotation.WhenModified;
 import javax.persistence.Id;
 import javax.persistence.MappedSuperclass;
 import javax.persistence.Version;
-import java.sql.Timestamp;
+import java.time.Instant;
 
 @MappedSuperclass
 public class EBase extends Model {
 
   @Id
-  protected Long id;
+  protected long id;
 
   @Version
-  protected Long version;
+  protected long version;
 
   @WhenCreated
-  protected Timestamp whenCreated;
+  protected Instant whenCreated;
 
   @WhenModified
-  protected Timestamp whenModified;
+  protected Instant whenModified;
 
-  public Long getId() {
+  public long getId() {
     return id;
   }
 
-  public void setId(Long id) {
+  public void setId(long id) {
     this.id = id;
   }
 
-  public Long getVersion() {
+  public long getVersion() {
     return version;
   }
 
-  public void setVersion(Long version) {
+  public void setVersion(long version) {
     this.version = version;
   }
 
-  public Timestamp getWhenCreated() {
+  public Instant getWhenCreated() {
     return whenCreated;
   }
 
-  public void setWhenCreated(Timestamp whenCreated) {
+  public void setWhenCreated(Instant whenCreated) {
     this.whenCreated = whenCreated;
   }
 
-  public Timestamp getWhenModified() {
+  public Instant getWhenModified() {
     return whenModified;
   }
 
-  public void setWhenModified(Timestamp whenModified) {
+  public void setWhenModified(Instant whenModified) {
     this.whenModified = whenModified;
   }
 }

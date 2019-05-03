@@ -2,29 +2,31 @@ package io.ebean.redis;
 
 import io.ebean.cache.ServerCache;
 import io.ebean.cache.ServerCacheStatistics;
+import io.ebean.meta.MetricVisitor;
+import io.ebeaninternal.server.cache.DefaultServerCache;
 
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.LongAdder;
 
 public class DuelCache implements ServerCache, NearCacheInvalidate {
 
-  private final ServerCache near;
-  private final ServerCache remote;
+  private final DefaultServerCache near;
+  private final RedisCache remote;
   private final NearCacheNotify cacheNotify;
   private final String cacheKey;
 
-  private final LongAdder nearMissCount = new LongAdder();
-  private final LongAdder nearHitCount = new LongAdder();
-  private final LongAdder remoteMissCount = new LongAdder();
-  private final LongAdder remoteHitCount = new LongAdder();
-
-  public DuelCache(ServerCache near, ServerCache remote, String cacheKey, NearCacheNotify cacheNotify) {
+  public DuelCache(DefaultServerCache near, RedisCache remote, String cacheKey, NearCacheNotify cacheNotify) {
     this.near = near;
     this.remote = remote;
     this.cacheKey = cacheKey;
     this.cacheNotify = cacheNotify;
+  }
+
+  @Override
+  public void visit(MetricVisitor visitor) {
+    near.visit(visitor);
+    remote.visit(visitor);
   }
 
   @Override
@@ -46,10 +48,6 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
   public Map<Object, Object> getAll(Set<Object> keys) {
 
     Map<Object, Object> resultMap = near.getAll(keys);
-
-    nearHitCount.add(resultMap.size());
-    nearMissCount.add(keys.size() - resultMap.size());
-
     Set<Object> localKeys = resultMap.keySet();
 
     Set<Object> remainingKeys = new HashSet<>();
@@ -61,10 +59,6 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
     if (!remainingKeys.isEmpty()) {
       // fetch missing ones from remote cache and merge results
       Map<Object, Object> remoteMap = remote.getAll(remainingKeys);
-
-      remoteHitCount.add(remoteMap.size());
-      remoteMissCount.add(remainingKeys.size() - remoteMap.size());
-
       if (!remoteMap.isEmpty()) {
         near.putAll(remoteMap);
         resultMap.putAll(remoteMap);
@@ -78,15 +72,10 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
   public Object get(Object id) {
     Object val = near.get(id);
     if (val != null) {
-      nearHitCount.increment();
       return val;
     }
-    nearMissCount.increment();
     Object remoteVal = remote.get(id);
-    if (remoteVal == null) {
-      remoteMissCount.increment();
-    } else {
-      remoteHitCount.increment();
+    if (remoteVal != null) {
       near.put(id, remoteVal);
     }
     return remoteVal;
@@ -108,7 +97,6 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
 
   @Override
   public void removeAll(Set<Object> keys) {
-
     near.removeAll(keys);
     remote.removeAll(keys);
     cacheNotify.invalidateKeys(cacheKey, keys);
@@ -128,6 +116,34 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
     cacheNotify.invalidateClear(cacheKey);
   }
 
+  /**
+   * Return the near cache hit count.
+   */
+  public long getNearHitCount() {
+    return near.getHitCount();
+  }
+
+  /**
+   * Return the near cache miss count.
+   */
+  public long getNearMissCount() {
+    return near.getMissCount();
+  }
+
+  /**
+   * Return the redis cache hit count.
+   */
+  public long getRemoteHitCount() {
+    return remote.getHitCount();
+  }
+
+  /**
+   * Return the redis cache miss count.
+   */
+  public long getRemoteMissCount() {
+    return remote.getMissCount();
+  }
+
   @Override
   public int size() {
     return 0;
@@ -141,21 +157,5 @@ public class DuelCache implements ServerCache, NearCacheInvalidate {
   @Override
   public ServerCacheStatistics getStatistics(boolean reset) {
     return null;
-  }
-
-  public long getNearMissCount() {
-    return nearMissCount.longValue();
-  }
-
-  public long getNearHitCount() {
-    return nearHitCount.longValue();
-  }
-
-  public long getRemoteMissCount() {
-    return remoteMissCount.longValue();
-  }
-
-  public long getRemoteHitCount() {
-    return remoteHitCount.longValue();
   }
 }

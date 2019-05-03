@@ -8,11 +8,11 @@ import io.ebean.cache.ServerCacheNotification;
 import io.ebean.cache.ServerCacheNotify;
 import io.ebean.config.ServerConfig;
 import io.ebean.meta.MetricType;
+import io.ebean.meta.MetricVisitor;
 import io.ebean.metric.MetricFactory;
 import io.ebean.metric.TimedMetric;
 import io.ebean.redis.encode.EncodeBeanData;
 import io.ebean.redis.encode.EncodeManyIdsData;
-import io.ebean.redis.encode.EncodePrefixKey;
 import io.ebean.redis.encode.EncodeSerializable;
 import io.ebean.redis.topic.DaemonTopic;
 import io.ebean.redis.topic.DaemonTopicRunner;
@@ -79,20 +79,29 @@ class RedisCacheFactory implements ServerCacheFactory {
 
   private final NearCacheNotify nearCacheNotify;
 
-  private final TimedMetric metricMsgOut;
-  private final TimedMetric metricMsgIn;
+  private final TimedMetric metricOutNearCache;
+  private final TimedMetric metricOutTableMod;
+  private final TimedMetric metricOutQueryCache;
+  private final TimedMetric metricInNearCache;
+  private final TimedMetric metricInTableMod;
+  private final TimedMetric metricInQueryCache;
 
   private final String serverId = ModId.id();
 
   private ServerCacheNotify listener;
 
-
   RedisCacheFactory(ServerConfig serverConfig, BackgroundExecutor executor) {
     this.executor = executor;
     this.jedisPool = getJedisPool(serverConfig);
     this.nearCacheNotify = new DNearCacheNotify();
-    this.metricMsgOut = MetricFactory.get().createTimedMetric(MetricType.L2, "ebean.l2cache.msgout");
-    this.metricMsgIn = MetricFactory.get().createTimedMetric(MetricType.L2, "ebean.l2cache.msgin");
+
+    MetricFactory factory = MetricFactory.get();
+    this.metricOutTableMod = factory.createTimedMetric(MetricType.L2, "l2a.outTableMod");
+    this.metricOutQueryCache = factory.createTimedMetric(MetricType.L2, "l2a.outQueryCache");
+    this.metricOutNearCache = factory.createTimedMetric(MetricType.L2, "l2a.outNearKeys");
+    this.metricInTableMod = factory.createTimedMetric(MetricType.L2, "l2a.inTableMod");
+    this.metricInQueryCache = factory.createTimedMetric(MetricType.L2, "l2a.inQueryCache");
+    this.metricInNearCache = factory.createTimedMetric(MetricType.L2, "l2a.inNearKeys");
 
     this.daemonTopicRunner = new DaemonTopicRunner(jedisPool, new CacheDaemonTopic());
     daemonTopicRunner.run();
@@ -115,6 +124,16 @@ class RedisCacheFactory implements ServerCacheFactory {
   }
 
   @Override
+  public void visit(MetricVisitor visitor) {
+    metricOutQueryCache.visit(visitor);
+    metricOutTableMod.visit(visitor);
+    metricOutNearCache.visit(visitor);
+    metricInTableMod.visit(visitor);
+    metricInQueryCache.visit(visitor);
+    metricInNearCache.visit(visitor);
+  }
+
+  @Override
   public ServerCache createCache(ServerCacheConfig config) {
     if (config.isQueryCache()) {
       return createQueryCache(config);
@@ -124,8 +143,7 @@ class RedisCacheFactory implements ServerCacheFactory {
 
   private ServerCache createNormalCache(ServerCacheConfig config) {
 
-    ServerCache redisCache = createRedisCache(config);
-
+    RedisCache redisCache = createRedisCache(config);
     boolean nearCache = config.getCacheOptions().isNearCache();
     if (!nearCache) {
       return redisCache;
@@ -134,24 +152,22 @@ class RedisCacheFactory implements ServerCacheFactory {
     String cacheKey = config.getCacheKey();
 
     DefaultServerCache near = new DefaultServerCache(new DefaultServerCacheConfig(config));
+    near.periodicTrim(executor);
     DuelCache duelCache = new DuelCache(near, redisCache, cacheKey, nearCacheNotify);
     nearCacheMap.put(cacheKey, duelCache);
 
     return duelCache;
   }
 
-  private ServerCache createRedisCache(ServerCacheConfig config) {
-
-    String cacheKey = config.getCacheKey();
-    EncodePrefixKey encodeKey = new EncodePrefixKey(cacheKey);
+  private RedisCache createRedisCache(ServerCacheConfig config) {
 
     switch (config.getType()) {
       case NATURAL_KEY:
-        return new RedisCache(jedisPool, cacheKey, encodeKey, encodeSerializable);
+        return new RedisCache(jedisPool, config, encodeSerializable);
       case BEAN:
-        return new RedisCache(jedisPool, cacheKey, encodeKey, encodeBeanData);
+        return new RedisCache(jedisPool, config, encodeBeanData);
       case COLLECTION_IDS:
-        return new RedisCache(jedisPool, cacheKey, encodeKey, encodeManyIdsData);
+        return new RedisCache(jedisPool, config, encodeManyIdsData);
       default:
         throw new IllegalArgumentException("Unexpected cache type? " + config.getType());
     }
@@ -177,14 +193,20 @@ class RedisCacheFactory implements ServerCacheFactory {
   }
 
   private void sendQueryCacheInvalidation(String name) {
+    long nanos = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
-      resource.publish(CHANNEL_L2, "queryCache:" + name);
+      resource.publish(CHANNEL_L2, serverId + ":queryCache:" + name);
+    } finally {
+      metricOutQueryCache.addSinceNanos(nanos);
     }
   }
 
   private void sendTableMod(String formattedMsg) {
+    long nanos = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
-      resource.publish(CHANNEL_L2, "tableMod:" + formattedMsg);
+      resource.publish(CHANNEL_L2, serverId + ":tableMod:" + formattedMsg);
+    } finally {
+      metricOutTableMod.addSinceNanos(nanos);
     }
   }
 
@@ -243,9 +265,14 @@ class RedisCacheFactory implements ServerCacheFactory {
    * Clear the query cache if we have it.
    */
   private void queryCacheInvalidate(String key) {
-    RQueryCache queryCache = queryCaches.get(key);
-    if (queryCache != null) {
-      queryCache.invalidate();
+    long nanos = System.nanoTime();
+    try {
+      RQueryCache queryCache = queryCaches.get(key);
+      if (queryCache != null) {
+        queryCache.invalidate();
+      }
+    } finally {
+      metricInQueryCache.addSinceNanos(nanos);
     }
   }
 
@@ -253,16 +280,20 @@ class RedisCacheFactory implements ServerCacheFactory {
    * Process a remote dependent table modify event.
    */
   private void processTableNotify(String rawMessage) {
+    long nanos = System.nanoTime();
+    try {
+      if (logger.isDebugEnabled()) {
+        logger.debug("processTableNotify {}", rawMessage);
+      }
 
-    if (logger.isDebugEnabled()) {
-      logger.debug("processTableNotify {}", rawMessage);
+      String[] split = rawMessage.split(",");
+      long modTimestamp = Long.parseLong(split[0]);
+
+      Set<String> tables = new HashSet<>(Arrays.asList(split).subList(1, split.length));
+      listener.notify(new ServerCacheNotification(modTimestamp, tables));
+    } finally {
+      metricInTableMod.addSinceNanos(nanos);
     }
-
-    String[] split = rawMessage.split(",");
-    long modTimestamp = Long.parseLong(split[0]);
-
-    Set<String> tables = new HashSet<>(Arrays.asList(split).subList(1, split.length));
-    listener.notify(new ServerCacheNotification(modTimestamp, tables));
   }
 
 
@@ -300,12 +331,10 @@ class RedisCacheFactory implements ServerCacheFactory {
 
     private void sendMessage(byte[] message) {
       long nanos = System.nanoTime();
-      try {
-        try (Jedis resource = jedisPool.getResource()) {
-          resource.publish(CHANNEL_NEAR_BYTES, message);
-        }
+      try (Jedis resource = jedisPool.getResource()) {
+        resource.publish(CHANNEL_NEAR_BYTES, message);
       } finally {
-        metricMsgOut.addSinceNanos(nanos);
+        metricOutNearCache.addSinceNanos(nanos);
       }
     }
 
@@ -370,31 +399,27 @@ class RedisCacheFactory implements ServerCacheFactory {
 
       @Override
       public void onMessage(byte[] channel, byte[] message) {
-        long nanos = System.nanoTime();
-        try {
-          String channelName = SafeEncoder.encode(channel);
-          if (channelName.equals(CHANNEL_L2)) {
-            processL2Message(SafeEncoder.encode(message));
-          } else {
-            processNearCacheMessage(message);
-          }
-        } finally {
-          metricMsgIn.addSinceNanos(nanos);
+        String channelName = SafeEncoder.encode(channel);
+        if (channelName.equals(CHANNEL_L2)) {
+          processL2Message(SafeEncoder.encode(message));
+        } else {
+          processNearCacheMessage(message);
         }
       }
 
       private void processNearCacheMessage(byte[] message) {
-
+        long nanos = System.nanoTime();
+        int msgType = 0;
         String cacheKey = null;
         try {
           ObjectInputStream oi = new ObjectInputStream(new ByteArrayInputStream(message));
           String sourceServerId = oi.readUTF();
-          int msgType = oi.readInt();
-          cacheKey = oi.readUTF();
           if (sourceServerId.equals(serverId)) {
             // ignore this message as we are the server that sent it
             return;
           }
+          msgType = oi.readInt();
+          cacheKey = oi.readUTF();
           if (logger.isDebugEnabled()) {
             logger.debug("processNearCacheMessage serverId:{} type:{} cacheKey:{}", sourceServerId, msgType, cacheKey);
           }
@@ -427,18 +452,26 @@ class RedisCacheFactory implements ServerCacheFactory {
           if (cacheKey != null) {
             nearCacheInvalidateClear(cacheKey);
           }
+        } finally {
+          if (msgType != 0) {
+            metricInNearCache.addSinceNanos(nanos);
+          }
         }
       }
 
       private void processL2Message(String message) {
         try {
           String[] split = message.split(":");
-          switch (split[0]) {
+          if (serverId.equals(split[0])) {
+            // ignore this message as we are the server that sent it
+            return;
+          }
+          switch (split[1]) {
             case "tableMod":
-              processTableNotify(split[1]);
+              processTableNotify(split[2]);
               break;
             case "queryCache":
-              queryCacheInvalidate(split[1]);
+              queryCacheInvalidate(split[2]);
               break;
             default:
               logger.error("Unknown L2 message type[{}] on redis channel - message[{}] ", split[0], message);
@@ -454,7 +487,6 @@ class RedisCacheFactory implements ServerCacheFactory {
    * Invalidate key for a local near cache.
    */
   private void nearCacheInvalidateKey(String cacheKey, Object key) {
-
     NearCacheInvalidate invalidate = nearCacheMap.get(cacheKey);
     if (invalidate == null) {
       warnNearCacheNotFound(cacheKey);
