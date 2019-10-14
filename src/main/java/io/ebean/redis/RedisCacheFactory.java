@@ -31,12 +31,13 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+
+import static java.util.Arrays.asList;
 
 class RedisCacheFactory implements ServerCacheFactory {
 
@@ -246,8 +247,6 @@ class RedisCacheFactory implements ServerCacheFactory {
       if (dependentTables != null && !dependentTables.isEmpty()) {
 
         StringBuilder msg = new StringBuilder(50);
-        msg.append(tableModifications.getModifyTimestamp()).append(",");
-
         for (String table : dependentTables) {
           msg.append(table).append(",");
         }
@@ -285,17 +284,12 @@ class RedisCacheFactory implements ServerCacheFactory {
       if (logger.isDebugEnabled()) {
         logger.debug("processTableNotify {}", rawMessage);
       }
-
-      String[] split = rawMessage.split(",");
-      long modTimestamp = Long.parseLong(split[0]);
-
-      Set<String> tables = new HashSet<>(Arrays.asList(split).subList(1, split.length));
-      listener.notify(new ServerCacheNotification(modTimestamp, tables));
+      Set<String> tables = new HashSet<>(asList(rawMessage.split(",")));
+      listener.notify(new ServerCacheNotification(tables));
     } finally {
       metricInTableMod.addSinceNanos(nanos);
     }
   }
-
 
   /**
    * Near cache notification using a specific Redis channel (CHANNEL_NEAR).
