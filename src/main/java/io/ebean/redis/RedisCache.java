@@ -3,7 +3,6 @@ package io.ebean.redis;
 import io.ebean.cache.ServerCache;
 import io.ebean.cache.ServerCacheConfig;
 import io.ebean.cache.ServerCacheStatistics;
-import io.ebean.meta.MetricType;
 import io.ebean.meta.MetricVisitor;
 import io.ebean.metric.CountMetric;
 import io.ebean.metric.MetricFactory;
@@ -24,8 +23,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import static io.ebean.meta.MetricType.L2;
 
 class RedisCache implements ServerCache {
 
@@ -60,15 +57,15 @@ class RedisCache implements ServerCache {
     String shortName = config.getShortName();
     MetricFactory factory = MetricFactory.get();
 
-    hitCount = factory.createCountMetric(L2, pre + shortName + ".hit");
-    missCount = factory.createCountMetric(L2, pre + shortName + ".miss");
-    metricGet = factory.createTimedMetric(MetricType.L2, pre + shortName + ".get");
-    metricGetAll = factory.createTimedMetric(MetricType.L2, pre + shortName + ".getMany");
-    metricPut = factory.createTimedMetric(MetricType.L2, pre + shortName + ".put");
-    metricPutAll = factory.createTimedMetric(MetricType.L2, pre + shortName + ".putMany");
-    metricRemove = factory.createTimedMetric(MetricType.L2, pre + shortName + ".remove");
-    metricRemoveAll = factory.createTimedMetric(MetricType.L2, pre + shortName + ".removeMany");
-    metricClear = factory.createTimedMetric(MetricType.L2, pre + shortName + ".clear");
+    hitCount = factory.createCountMetric(pre + shortName + ".hit");
+    missCount = factory.createCountMetric(pre + shortName + ".miss");
+    metricGet = factory.createTimedMetric(pre + shortName + ".get");
+    metricGetAll = factory.createTimedMetric(pre + shortName + ".getMany");
+    metricPut = factory.createTimedMetric(pre + shortName + ".put");
+    metricPutAll = factory.createTimedMetric(pre + shortName + ".putMany");
+    metricRemove = factory.createTimedMetric(pre + shortName + ".remove");
+    metricRemoveAll = factory.createTimedMetric(pre + shortName + ".removeMany");
+    metricClear = factory.createTimedMetric(pre + shortName + ".clear");
   }
 
   @Override
@@ -130,7 +127,7 @@ class RedisCache implements ServerCache {
       if (miss > 0) {
         missCount.add(miss);
       }
-      metricGetAll.addSinceNanos(start, keyList.size());
+      metricGetAll.addSinceNanos(start);
       return map;
     }
   }
@@ -171,7 +168,7 @@ class RedisCache implements ServerCache {
         raw[pos++] = value(entry.getValue());
       }
       resource.mset(raw);
-      metricPutAll.addSinceNanos(start, keyValues.size());
+      metricPutAll.addSinceNanos(start);
     }
   }
 
@@ -189,7 +186,7 @@ class RedisCache implements ServerCache {
     long start = System.nanoTime();
     try (Jedis resource = jedisPool.getResource()) {
       resource.del(keysAsBytes(keys));
-      metricRemoveAll.addSinceNanos(start, keys.size());
+      metricRemoveAll.addSinceNanos(start);
     }
   }
 

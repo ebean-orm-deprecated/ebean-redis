@@ -7,7 +7,6 @@ import io.ebean.cache.ServerCacheFactory;
 import io.ebean.cache.ServerCacheNotification;
 import io.ebean.cache.ServerCacheNotify;
 import io.ebean.config.ServerConfig;
-import io.ebean.meta.MetricType;
 import io.ebean.meta.MetricVisitor;
 import io.ebean.metric.MetricFactory;
 import io.ebean.metric.TimedMetric;
@@ -97,13 +96,12 @@ class RedisCacheFactory implements ServerCacheFactory {
     this.nearCacheNotify = new DNearCacheNotify();
 
     MetricFactory factory = MetricFactory.get();
-    this.metricOutTableMod = factory.createTimedMetric(MetricType.L2, "l2a.outTableMod");
-    this.metricOutQueryCache = factory.createTimedMetric(MetricType.L2, "l2a.outQueryCache");
-    this.metricOutNearCache = factory.createTimedMetric(MetricType.L2, "l2a.outNearKeys");
-    this.metricInTableMod = factory.createTimedMetric(MetricType.L2, "l2a.inTableMod");
-    this.metricInQueryCache = factory.createTimedMetric(MetricType.L2, "l2a.inQueryCache");
-    this.metricInNearCache = factory.createTimedMetric(MetricType.L2, "l2a.inNearKeys");
-
+    this.metricOutTableMod = factory.createTimedMetric("l2a.outTableMod");
+    this.metricOutQueryCache = factory.createTimedMetric("l2a.outQueryCache");
+    this.metricOutNearCache = factory.createTimedMetric("l2a.outNearKeys");
+    this.metricInTableMod = factory.createTimedMetric("l2a.inTableMod");
+    this.metricInQueryCache = factory.createTimedMetric("l2a.inQueryCache");
+    this.metricInNearCache = factory.createTimedMetric("l2a.inNearKeys");
     this.daemonTopicRunner = new DaemonTopicRunner(jedisPool, new CacheDaemonTopic());
     daemonTopicRunner.run();
   }
