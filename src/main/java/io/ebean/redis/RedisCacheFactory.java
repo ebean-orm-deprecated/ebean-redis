@@ -40,6 +40,8 @@ import static java.util.Arrays.asList;
 
 class RedisCacheFactory implements ServerCacheFactory {
 
+  private static final Logger log = LoggerFactory.getLogger(RedisCacheFactory.class);
+
   private static final Logger queryLogger = LoggerFactory.getLogger("io.ebean.cache.QUERY");
 
   private static final Logger logger = LoggerFactory.getLogger("io.ebean.cache.CACHE");
@@ -92,9 +94,7 @@ class RedisCacheFactory implements ServerCacheFactory {
 
   RedisCacheFactory(ServerConfig serverConfig, BackgroundExecutor executor) {
     this.executor = executor;
-    this.jedisPool = getJedisPool(serverConfig);
     this.nearCacheNotify = new DNearCacheNotify();
-
     MetricFactory factory = MetricFactory.get();
     this.metricOutTableMod = factory.createTimedMetric("l2a.outTableMod");
     this.metricOutQueryCache = factory.createTimedMetric("l2a.outQueryCache");
@@ -102,8 +102,14 @@ class RedisCacheFactory implements ServerCacheFactory {
     this.metricInTableMod = factory.createTimedMetric("l2a.inTableMod");
     this.metricInQueryCache = factory.createTimedMetric("l2a.inQueryCache");
     this.metricInNearCache = factory.createTimedMetric("l2a.inNearKeys");
-    this.daemonTopicRunner = new DaemonTopicRunner(jedisPool, new CacheDaemonTopic());
-    daemonTopicRunner.run();
+    if (serverConfig.isDisableL2Cache()) {
+      this.jedisPool = null;
+      this.daemonTopicRunner = null;
+    } else {
+      this.jedisPool = getJedisPool(serverConfig);
+      this.daemonTopicRunner = new DaemonTopicRunner(jedisPool, new CacheDaemonTopic());
+      daemonTopicRunner.run();
+    }
   }
 
   /**
@@ -119,6 +125,7 @@ class RedisCacheFactory implements ServerCacheFactory {
       redisConfig = new RedisConfig();
     }
     redisConfig.loadProperties(serverConfig.getProperties());
+    log.info("using l2cache redis host {}:{}", redisConfig.getServer(), redisConfig.getPort());
     return redisConfig.createPool();
   }
 

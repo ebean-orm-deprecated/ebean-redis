@@ -96,36 +96,42 @@ public class RedisConfig {
   }
 
   public void loadProperties(Properties properties) {
-    this.server = properties.getProperty("ebean.redis.server", server);
-    this.port = getInt(properties, "ebean.redis.port", port);
-    this.minIdle = getInt(properties, "ebean.redis.minIdle", minIdle);
-    this.maxIdle = getInt(properties, "ebean.redis.maxIdle", maxIdle);
-    this.maxTotal = getInt(properties, "ebean.redis.maxTotal", maxTotal);
-    this.maxWaitMillis = getLong(properties, "ebean.redis.maxWaitMillis", maxWaitMillis);
-    this.blockWhenExhausted = getBool(properties, "ebean.redis.blockWhenExhausted", blockWhenExhausted);
+    Reader reader = new Reader(properties);
+    this.server = reader.get("ebean.redis.server", server);
+    this.port = reader.getInt("ebean.redis.port", port);
+    this.minIdle = reader.getInt("ebean.redis.minIdle", minIdle);
+    this.maxIdle = reader.getInt("ebean.redis.maxIdle", maxIdle);
+    this.maxTotal = reader.getInt("ebean.redis.maxTotal", maxTotal);
+    this.maxWaitMillis = reader.getLong("ebean.redis.maxWaitMillis", maxWaitMillis);
+    this.blockWhenExhausted = reader.getBool("ebean.redis.blockWhenExhausted", blockWhenExhausted);
   }
 
-  private int getInt(Properties properties, String key, int defaulValue) {
-    String val = properties.getProperty(key);
-    if (val != null) {
-      return Integer.parseInt(val.trim());
+  private static class Reader {
+
+    private final Properties properties;
+
+    Reader(Properties properties) {
+      this.properties = (properties != null) ? properties : new Properties();
     }
-    return defaulValue;
+
+    String get(String key, String defaultVal) {
+      return System.getProperty(key, properties.getProperty(key, defaultVal));
+    }
+
+    int getInt(String key, int defaultVal) {
+      final String val = get(key, null);
+      return val != null ? Integer.parseInt(val.trim()) : defaultVal;
+    }
+
+    long getLong(String key, long defaultVal) {
+      final String val = get(key, null);
+      return val != null ? Integer.parseInt(val.trim()) : defaultVal;
+    }
+
+    boolean getBool(String key, boolean defaultVal) {
+      final String val = get(key, null);
+      return val != null ? Boolean.parseBoolean(val.trim()) : defaultVal;
+    }
   }
 
-  private long getLong(Properties properties, String key, long defaultValue) {
-    String val = properties.getProperty(key);
-    if (val != null) {
-      return Long.parseLong(val.trim());
-    }
-    return defaultValue;
-  }
-
-  private boolean getBool(Properties properties, String key, boolean defaulValue) {
-    String val = properties.getProperty(key);
-    if (val != null) {
-      return Boolean.parseBoolean(val.trim());
-    }
-    return defaulValue;
-  }
 }
