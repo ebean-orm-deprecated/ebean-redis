@@ -6,7 +6,7 @@ import io.ebean.cache.ServerCacheConfig;
 import io.ebean.cache.ServerCacheFactory;
 import io.ebean.cache.ServerCacheNotification;
 import io.ebean.cache.ServerCacheNotify;
-import io.ebean.config.ServerConfig;
+import io.ebean.config.DatabaseConfig;
 import io.ebean.meta.MetricVisitor;
 import io.ebean.metric.MetricFactory;
 import io.ebean.metric.TimedMetric;
@@ -92,7 +92,7 @@ class RedisCacheFactory implements ServerCacheFactory {
 
   private ServerCacheNotify listener;
 
-  RedisCacheFactory(ServerConfig serverConfig, BackgroundExecutor executor) {
+  RedisCacheFactory(DatabaseConfig config, BackgroundExecutor executor) {
     this.executor = executor;
     this.nearCacheNotify = new DNearCacheNotify();
     MetricFactory factory = MetricFactory.get();
@@ -102,11 +102,11 @@ class RedisCacheFactory implements ServerCacheFactory {
     this.metricInTableMod = factory.createTimedMetric("l2a.inTableMod");
     this.metricInQueryCache = factory.createTimedMetric("l2a.inQueryCache");
     this.metricInNearCache = factory.createTimedMetric("l2a.inNearKeys");
-    if (serverConfig.isDisableL2Cache()) {
+    if (config.isDisableL2Cache()) {
       this.jedisPool = null;
       this.daemonTopicRunner = null;
     } else {
-      this.jedisPool = getJedisPool(serverConfig);
+      this.jedisPool = getJedisPool(config);
       this.daemonTopicRunner = new DaemonTopicRunner(jedisPool, new CacheDaemonTopic());
       daemonTopicRunner.run();
     }
@@ -115,16 +115,16 @@ class RedisCacheFactory implements ServerCacheFactory {
   /**
    * Return the JedisPool to use (only 1 at this stage).
    */
-  private JedisPool getJedisPool(ServerConfig serverConfig) {
-    JedisPool jedisPool = serverConfig.getServiceObject(JedisPool.class);
+  private JedisPool getJedisPool(DatabaseConfig config) {
+    JedisPool jedisPool = config.getServiceObject(JedisPool.class);
     if (jedisPool != null) {
       return jedisPool;
     }
-    RedisConfig redisConfig = serverConfig.getServiceObject(RedisConfig.class);
+    RedisConfig redisConfig = config.getServiceObject(RedisConfig.class);
     if (redisConfig == null) {
       redisConfig = new RedisConfig();
     }
-    redisConfig.loadProperties(serverConfig.getProperties());
+    redisConfig.loadProperties(config.getProperties());
     log.info("using l2cache redis host {}:{}", redisConfig.getServer(), redisConfig.getPort());
     return redisConfig.createPool();
   }

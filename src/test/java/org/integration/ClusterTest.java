@@ -9,14 +9,17 @@ import io.ebean.config.DatabaseConfig;
 import org.domain.query.QPerson;
 import org.junit.Test;
 
+import javax.sql.DataSource;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class ClusterTest {
 
 
-  private Database createOther() {
+  private Database createOther(DataSource dataSource) {
 
     DatabaseConfig config = new DatabaseConfig();
+    config.setDataSource(dataSource);
     config.loadFromProperties();
     config.setDefaultServer(false);
     config.setName("other");
@@ -29,8 +32,8 @@ public class ClusterTest {
   @Test
   public void testBothNear() {
     // ensure the default server exists first
-    DB.getDefault();
-    Database other = createOther();
+    final Database db = DB.getDefault();
+    Database other = createOther(db.getPluginApi().getDataSource());
 
     new QPerson()
       .name.eq("Someone")
@@ -58,9 +61,9 @@ public class ClusterTest {
   public void test() throws InterruptedException {
 
     // ensure the default server exists first
-    DB.getDefault();
+    final Database db = DB.getDefault();
 
-    Database other = createOther();
+    Database other = createOther(db.getPluginApi().getDataSource());
 
     for (int i = 0; i < 10; i++) {
       Person foo = new Person("name " + i);
