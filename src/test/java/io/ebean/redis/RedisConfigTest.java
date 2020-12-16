@@ -18,6 +18,9 @@ public class RedisConfigTest {
     p.setProperty("ebean.redis.maxTotal", "6");
     p.setProperty("ebean.redis.minIdle", "7");
     p.setProperty("ebean.redis.maxWaitMillis", "8");
+    p.setProperty("ebean.redis.username", "un");
+    p.setProperty("ebean.redis.password", "pw");
+    p.setProperty("ebean.redis.ssl", "true");
 
     RedisConfig config = new RedisConfig();
     config.loadProperties(p);
@@ -28,6 +31,16 @@ public class RedisConfigTest {
     assertThat(config.getMaxTotal()).isEqualTo(6);
     assertThat(config.getMinIdle()).isEqualTo(7);
     assertThat(config.getMaxWaitMillis()).isEqualTo(8);
+    assertThat(config.getUsername()).isEqualTo("un");
+    assertThat(config.getPassword()).isEqualTo("pw");
+    assertThat(config.isSsl()).isEqualTo(true);
+  }
 
+  @Test
+  public void test_defaultValues() {
+    RedisConfig config = new RedisConfig();
+    assertThat(config.getUsername()).isNull();
+    assertThat(config.getPassword()).isNull();
+    assertThat(config.isSsl()).isEqualTo(false);
   }
 }
